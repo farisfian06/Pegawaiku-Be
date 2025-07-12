@@ -34,7 +34,7 @@ class EmployeeController extends Controller
                 'employees' => $employees->map(function ($employee) {
                     return [
                         'id' => $employee->id,
-                        'image' => $employee->image,
+                        'image' => url('/images/' . $employee->image),
                         'name' => $employee->name,
                         'phone' => $employee->phone,
                         'division' => [
@@ -128,38 +128,40 @@ class EmployeeController extends Controller
         try {
             $employee = Employee::findOrFail($id);
 
-            $validated = Validator::make($request->all(), [
-                'image' => 'nullable|image|mimes:jpeg,jpg,png|max:2048',
+            $rules = [
                 'phone' => 'required|string|max:20',
                 'name' => 'required|string|max:255',
                 'division' => 'required|exists:divisions,id',
                 'position' => 'required|string|max:100',
-            ]);
+            ];
 
-            if ($validated->fails()) {
+            if ($request->hasFile('image')) {
+                $rules['image'] = 'nullable|image|mimes:jpeg,jpg,png|max:2048';
+            }
+
+            $validator = Validator::make($request->all(), $rules);
+
+            if ($validator->fails()) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => $validated->errors()->first(),
+                    'message' => $validator->errors()->first(),
                 ], 422);
             }
 
-            $data = $request->all();
+            $data = $request->only(['name', 'phone', 'position']);
+            $data['division_id'] = $request->division;
 
             if ($request->hasFile('image')) {
-                // Delete existing image if exists
+                // Hapus gambar lama jika ada
                 if ($employee->image && file_exists(public_path('/images/' . $employee->image))) {
                     unlink(public_path('/images/' . $employee->image));
                 }
 
                 $image = $request->file('image');
                 $name = time() . '.' . $image->getClientOriginalExtension();
-                $destinationPath = public_path('/images');
-                $image->move($destinationPath, $name);
+                $image->move(public_path('/images'), $name);
                 $data['image'] = $name;
             }
-
-            $data['division_id'] = $request->division;
-            unset($data['division']);
 
             $employee->update($data);
 
@@ -175,10 +177,11 @@ class EmployeeController extends Controller
         } catch (Exception $e) {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Terjadi kesalahan saat memperbarui karyawan' . $e->getMessage(),
+                'message' => 'Terjadi kesalahan saat memperbarui karyawan: ' . $e->getMessage(),
             ], 500);
         }
     }
+
 
     /**
      * Remove the specified resource from storage.
